@@ -10,7 +10,7 @@ import pandas as pd
 
 # Supabase Credentials
 SUPABASE_URL = "https://jqffwokcwmsbnlajhoah.supabase.co"  # Replace with your Supabase URL
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxZmZ3b2tjd21zYm5sYWpob2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2NzIyMzgsImV4cCI6MjA3OTI0ODIzOH0.IMwRFVvIMUJKRKAgGjykwsE7shOoUkInM7t36pYQvyM  # Replace with your Supabase anon/public key
+SUPABASE_KEY = "sb_publishable_CfyVSnj3E0k2fYFUeGaE9w_k89GEjVE" # Replace with your Supabase anon/public key
 
 # Platzi API Configuration
 PLATZI_API_BASE = "https://api.platzi.com/graphql"
