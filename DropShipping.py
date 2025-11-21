@@ -11,6 +11,9 @@ import re
 SUPABASE_URL = "https://jqffwokcwmsbnlajhoah.supabase.co"  # Replace with your Supabase URL
 SUPABASE_KEY = "sb_publishable_CfyVSnj3E0k2fYFUeGaE9w_k89GEjVE"  # Replace with your Supabase anon/public key
 
+# Platzi API Configuration
+PLATZI_API_BASE = "https://api.platzi.com/graphql"
+
 # ========================================
 # INITIALIZE SUPABASE CLIENT
 # ========================================
@@ -130,6 +133,71 @@ def delete_product(supabase, product_id):
         return False, f"❌ Error deleting product: {e}"
 
 # ========================================
+# PLATZI API FUNCTIONS
+# ========================================
+
+def fetch_platzi_courses():
+    """Fetch courses from Platzi's free public GraphQL API"""
+    query = """
+    query {
+        allCourses(limit: 20) {
+            edges {
+                node {
+                    title
+                    slug
+                    description
+                    teacher {
+                        name
+                    }
+                }
+            }
+        }
+    }
+    """
+    
+    try:
+        response = requests.post(
+            PLATZI_API_BASE,
+            json={"query": query},
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "errors" in data:
+                st.error(f"Platzi API returned errors: {data['errors']}")
+                return []
+            return data.get("data", {}).get("allCourses", {}).get("edges", [])
+        else:
+            st.error(f"Platzi API error: Status {response.status_code}")
+            return []
+    except requests.exceptions.Timeout:
+        st.error("Request to Platzi API timed out")
+        return []
+    except Exception as e:
+        st.error(f"Error fetching Platzi courses: {e}")
+        return []
+
+def import_platzi_course_as_product(supabase, course_node, default_price=99.99):
+    """Import a Platzi course as a product in your dropshipping system"""
+    teacher = course_node.get("teacher", {})
+    
+    product_data = {
+        "name": course_node.get("title", "Unknown Course"),
+        "sku": f"PLATZI-{course_node.get('slug', 'unknown').upper()}",
+        "description": course_node.get("description", "No description available"),
+        "price": default_price,
+        "cost": 0.00,  # Digital product, no cost
+        "stock_quantity": 9999,  # Digital product, unlimited stock
+        "supplier_name": f"Platzi - {teacher.get('name', 'Unknown')}",
+        "supplier_url": f"https://platzi.com/courses/{course_node.get('slug', '')}",
+        "category": "Online Courses"
+    }
+    
+    return add_product(supabase, product_data)
+
+# ========================================
 # ORDER FUNCTIONS
 # ========================================
 
@@ -196,6 +264,7 @@ def main():
             "Choose a section:",
             [
                 "🔧 Setup Instructions",
+                "🎓 Import from Platzi",
                 "👥 Customers",
                 "📦 Products",
                 "🛒 Orders",
@@ -298,6 +367,25 @@ CREATE INDEX idx_orders_status ON orders(status);
         
         st.markdown("---")
         
+        st.subheader("🎓 Step 4: Platzi API (Free - No Setup Needed!)")
+        st.markdown("""
+        The Platzi API is a **free public API** - no authentication required!
+        
+        **What you can do:**
+        - Import courses from Platzi as products
+        - Automatically populate product catalog
+        - Use real course data (titles, descriptions, instructors)
+        
+        **API Endpoint:**
+        ```
+        https://api.platzi.com/graphql
+        ```
+        
+        Go to the **"🎓 Import from Platzi"** tab to start importing courses!
+        """)
+        
+        st.markdown("---")
+        
         st.subheader("📊 Database Structure")
         
         col1, col2, col3 = st.columns(3)
@@ -349,6 +437,137 @@ notes
 created_at
 updated_at
             """)
+    
+    # ========================================
+    # PAGE: IMPORT FROM PLATZI
+    # ========================================
+    
+    elif page == "🎓 Import from Platzi":
+        st.header("🎓 Import Courses from Platzi API")
+        
+        st.info("📚 Import courses from Platzi's free public API as products in your catalog!")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("""
+            **What happens when you import:**
+            - Course becomes a product in your catalog
+            - SKU format: `PLATZI-COURSE-SLUG`
+            - Category: "Online Courses"
+            - Stock: Unlimited (digital product)
+            - Supplier: Platzi + Instructor name
+            """)
+        
+        with col2:
+            default_price = st.number_input(
+                "Default Price ($)",
+                min_value=0.01,
+                value=99.99,
+                step=10.00,
+                help="Set the selling price for imported courses"
+            )
+        
+        st.divider()
+        
+        if st.button("🔄 Fetch Courses from Platzi", type="primary", use_container_width=True):
+            with st.spinner("Fetching courses from Platzi API..."):
+                courses = fetch_platzi_courses()
+                
+                if courses:
+                    st.success(f"✅ Found {len(courses)} courses from Platzi!")
+                    
+                    # Store in session state to avoid re-fetching
+                    st.session_state['platzi_courses'] = courses
+                else:
+                    st.warning("⚠️ No courses found or API is temporarily unavailable")
+        
+        # Display fetched courses
+        if 'platzi_courses' in st.session_state and st.session_state['platzi_courses']:
+            courses = st.session_state['platzi_courses']
+            
+            st.markdown(f"### 📚 {len(courses)} Courses Available")
+            
+            for idx, edge in enumerate(courses):
+                node = edge.get("node", {})
+                teacher = node.get("teacher", {})
+                title = node.get("title", "Unknown Course")
+                slug = node.get("slug", "unknown")
+                description = node.get("description", "No description available")
+                teacher_name = teacher.get("name", "Unknown")
+                
+                with st.expander(f"📖 {title}"):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.markdown(f"**Instructor:** {teacher_name}")
+                        st.markdown(f"**Slug:** `{slug}`")
+                        st.markdown(f"**Course URL:** https://platzi.com/courses/{slug}")
+                        st.markdown(f"**Description:**")
+                        st.write(description[:300] + "..." if len(description) > 300 else description)
+                        
+                        st.markdown("---")
+                        st.markdown("**Will be imported as:**")
+                        st.markdown(f"- SKU: `PLATZI-{slug.upper()}`")
+                        st.markdown(f"- Price: ${default_price:.2f}")
+                        st.markdown(f"- Category: Online Courses")
+                        st.markdown(f"- Stock: Unlimited (digital)")
+                    
+                    with col2:
+                        if st.button("📥 Import", key=f"import_{idx}", use_container_width=True):
+                            success, message, product_id = import_platzi_course_as_product(
+                                supabase, 
+                                node, 
+                                default_price
+                            )
+                            
+                            if success:
+                                st.success(message)
+                                st.balloons()
+                                st.info(f"💡 View in Products tab (ID: {product_id})")
+                            else:
+                                st.error(message)
+            
+            # Bulk import option
+            st.divider()
+            st.subheader("⚡ Bulk Import")
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown("Import all courses at once with the default price")
+                num_to_import = st.slider("Number of courses to import", 1, len(courses), min(5, len(courses)))
+            
+            with col2:
+                if st.button("📥 Import All Selected", type="primary", use_container_width=True):
+                    success_count = 0
+                    error_count = 0
+                    
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    for idx in range(num_to_import):
+                        node = courses[idx].get("node", {})
+                        success, message, _ = import_platzi_course_as_product(
+                            supabase, 
+                            node, 
+                            default_price
+                        )
+                        
+                        if success:
+                            success_count += 1
+                        else:
+                            error_count += 1
+                        
+                        progress_bar.progress((idx + 1) / num_to_import)
+                        status_text.text(f"Processing: {idx + 1}/{num_to_import}")
+                    
+                    st.success(f"✅ Imported {success_count} courses successfully!")
+                    if error_count > 0:
+                        st.warning(f"⚠️ {error_count} courses skipped (may already exist)")
+                    st.balloons()
+        else:
+            st.info("👆 Click the button above to fetch courses from Platzi API")
     
     # ========================================
     # PAGE: CUSTOMERS
